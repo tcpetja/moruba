@@ -3,6 +3,7 @@ import 'package:flame/components.dart';
 import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
 import 'package:flutter/material.dart';
+
 import '../../domain/player.dart';
 import 'stone_component.dart';
 
@@ -11,11 +12,13 @@ class PitComponent extends PositionComponent with TapCallbacks {
   final Player player;
   final bool isBank;
   final Function(int) onTapped;
-  
+
   bool isValidMove = false;
   bool isCaptureMode = false;
-  int _currentStones = 0;
+  bool isSelectedJump = false; // NEW
 
+  int _currentStones = 0;
+  
   late final Paint _basePaint;
   late final Paint _innerShadowPaint;
   late final Paint _borderPaint;
@@ -47,7 +50,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
         colors: [Colors.transparent, Colors.black.withOpacity(0.65)],
         stops: const [0.7, 1.0],
       ).createShader(Rect.fromLTWH(0, 0, size.x, size.y));
-          
+      
     _borderPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.5;
@@ -65,8 +68,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
       expandedSize = size.clone();
       expandedPos = position.clone();
       
-      final skinnyWidth = 20.0; 
-      
+      final skinnyWidth = 20.0;       
       collapsedSize = Vector2(skinnyWidth, size.y);
       if (player == Player.player2) {
         collapsedPos = position.clone(); 
@@ -75,7 +77,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
       }
     }
   }
-  
+
   void toggleBank() {
     if (!isBank) return;
     if (isExpanded) collapseBank();
@@ -140,6 +142,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
         _spawnStone(i, targetCount);
       }
     }
+
     _currentStones = targetCount;
   }
 
@@ -154,14 +157,12 @@ class PitComponent extends PositionComponent with TapCallbacks {
 
     if (total > 1) {
       if (isBank) {
-        // Banks remain an organic pile to fit into their rectangular shape
         Random seededRandom = Random(index); 
         double maxDx = actualWidth - (stoneRadius * 2) - 10;
         double maxDy = actualHeight - (stoneRadius * 2) - 10;
         dx = stoneRadius + 5 + seededRandom.nextDouble() * maxDx;
         dy = stoneRadius + 5 + seededRandom.nextDouble() * maxDy;
       } else {
-        // THE FIX: Strict Geometric Subitizing Patterns for Standard Pits
         final R = (actualWidth / 2) - stoneRadius - 4; 
         double offsetX = 0;
         double offsetY = 0;
@@ -172,9 +173,9 @@ class PitComponent extends PositionComponent with TapCallbacks {
         } 
         else if (total == 3) {
           double r = R * 0.6;
-          if (index == 0) { offsetX = 0; offsetY = -r; } // Top center
-          else if (index == 1) { offsetX = -r; offsetY = r * 0.8; } // Bottom left
-          else { offsetX = r; offsetY = r * 0.8; } // Bottom right
+          if (index == 0) { offsetX = 0; offsetY = -r; }
+          else if (index == 1) { offsetX = -r; offsetY = r * 0.8; }
+          else { offsetX = r; offsetY = r * 0.8; }
         } 
         else if (total == 4) {
           double r = R * 0.55;
@@ -183,7 +184,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
         } 
         else if (total == 5) {
           double r = R * 0.6;
-          if (index == 4) { offsetX = 0; offsetY = 0; } // Center
+          if (index == 4) { offsetX = 0; offsetY = 0; }
           else {
             offsetX = (index % 2 == 0) ? -r : r;
             offsetY = (index < 2) ? -r : r;
@@ -198,7 +199,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
           else offsetY = ry;
         } 
         else if (total == 7) {
-          if (index == 6) { offsetX = 0; offsetY = 0; } // Center
+          if (index == 6) { offsetX = 0; offsetY = 0; }
           else {
             double r = R * 0.75;
             double angle = index * (2 * pi / 6);
@@ -220,7 +221,6 @@ class PitComponent extends PositionComponent with TapCallbacks {
           offsetY = (row - 1) * r;
         } 
         else {
-          // Fallback for 10+: Sunflower Spiral
           final goldenAngle = 137.5 * (pi / 180.0);
           final maxRadius = (actualWidth / 2) - stoneRadius - 4;
           final radiusStep = maxRadius / sqrt(total - 1 > 0 ? total - 1 : 1);
@@ -234,7 +234,6 @@ class PitComponent extends PositionComponent with TapCallbacks {
         dy = center.y + offsetY;
       }
     }
-
     add(StoneComponent(position: Vector2(dx, dy), radius: stoneRadius));
   }
 
@@ -255,7 +254,10 @@ class PitComponent extends PositionComponent with TapCallbacks {
       canvas.drawCircle(center, size.x / 2, _innerShadowPaint); 
     }
 
-    if (isCaptureMode) {
+    if (isSelectedJump) {
+      _borderPaint.color = Colors.orangeAccent;
+      canvas.drawCircle(center, size.x / 2, _borderPaint);
+    } else if (isCaptureMode) {
       _borderPaint.color = Colors.greenAccent.shade400;
       if (isBank) {
         final dynamicRadius = Radius.circular(min(20.0, size.x / 2));
@@ -272,7 +274,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
       final badgePaint = Paint()
         ..color = Colors.black.withOpacity(0.55)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0);
-      
+        
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromCenter(center: center, width: 28, height: 28),
@@ -280,7 +282,6 @@ class PitComponent extends PositionComponent with TapCallbacks {
         ),
         badgePaint
       );
-
       _textPaint.render(
         canvas,
         '$_currentStones',

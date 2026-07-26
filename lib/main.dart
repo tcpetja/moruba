@@ -46,6 +46,8 @@ class ErrorWidgetBuilder extends StatelessWidget {
 }
 
 enum GameMode { singlePlayer, twoPlayer, onlineFriend, onlineRandom }
+enum FirstPlayerChoice { player1, player2, random }
+
 final gameModeProvider = StateProvider<GameMode?>((ref) => null);
 final boardSizeProvider = StateProvider<int>((ref) => 6); 
 final aiDifficultyProvider = StateProvider<AIDifficulty>((ref) => AIDifficulty.expert);
@@ -118,7 +120,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSmallScreen = MediaQuery.of(context).size.height < 600;
-
+    
     return Scaffold(
       body: Stack(
         fit: StackFit.expand,
@@ -203,7 +205,9 @@ class HomeScreen extends StatelessWidget {
 class DelayedAnimation extends StatefulWidget {
   final Widget child;
   final int delayMs;
+
   const DelayedAnimation({super.key, required this.child, required this.delayMs});
+
   @override
   State<DelayedAnimation> createState() => _DelayedAnimationState();
 }
@@ -211,15 +215,18 @@ class DelayedAnimation extends StatefulWidget {
 class _DelayedAnimationState extends State<DelayedAnimation> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
     _animation = CurvedAnimation(parent: _controller, curve: Curves.easeOutBack);
+    
     Future.delayed(Duration(milliseconds: widget.delayMs), () {
       if (mounted) _controller.forward();
     });
   }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -233,6 +240,7 @@ class _DelayedAnimationState extends State<DelayedAnimation> with SingleTickerPr
       child: widget.child, 
     );
   }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -243,7 +251,9 @@ class _DelayedAnimationState extends State<DelayedAnimation> with SingleTickerPr
 class AnimatedButton extends StatefulWidget {
   final Widget child;
   final VoidCallback onPressed;
+
   const AnimatedButton({super.key, required this.child, required this.onPressed});
+
   @override
   State<AnimatedButton> createState() => _AnimatedButtonState();
 }
@@ -251,6 +261,7 @@ class AnimatedButton extends StatefulWidget {
 class _AnimatedButtonState extends State<AnimatedButton> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
+
   @override
   void initState() {
     super.initState();
@@ -258,6 +269,7 @@ class _AnimatedButtonState extends State<AnimatedButton> with SingleTickerProvid
     _scaleAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
     _controller.forward();
   }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -270,6 +282,7 @@ class _AnimatedButtonState extends State<AnimatedButton> with SingleTickerProvid
       child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
     );
   }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -279,6 +292,7 @@ class _AnimatedButtonState extends State<AnimatedButton> with SingleTickerProvid
 
 class ModeSelectionScreen extends StatelessWidget {
   const ModeSelectionScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -341,7 +355,7 @@ class OfflineModeScreen extends ConsumerWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SizedBox(height: isSmall ? 60 : 0), 
+                SizedBox(height: isSmall ? 60 : 0),
                 
                 Text("PITS PER ROW", style: TextStyle(color: Colors.white, fontSize: isSmall ? 14 : 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
                 SizedBox(height: isSmall ? 8 : 10),
@@ -372,18 +386,13 @@ class OfflineModeScreen extends ConsumerWidget {
                 SizedBox(height: isSmall ? 25 : 50),
                 
                 AnimatedButton(
-                  onPressed: () => _showDifficultyDialog(context, ref, currentSize),
+                  onPressed: () => _showMatchSetupDialog(context, ref, currentSize, true),
                   child: _SubMenuCard('SINGLE PLAYER', Icons.person, isSmall),
                 ),
                 SizedBox(height: isSmall ? 15 : 30),
                 
                 AnimatedButton(
-                  onPressed: () {
-                    ref.read(gameModeProvider.notifier).state = GameMode.twoPlayer;
-                    ref.read(gameProvider.notifier).setGameMode(false);
-                    ref.read(gameProvider.notifier).resetGame(newSize: currentSize); 
-                    Navigator.pushNamed(context, '/game');
-                  },
+                  onPressed: () => _showMatchSetupDialog(context, ref, currentSize, false),
                   child: _SubMenuCard('TWO PLAYERS', Icons.people, isSmall),
                 ),
                 SizedBox(height: isSmall ? 20 : 0),
@@ -395,81 +404,131 @@ class OfflineModeScreen extends ConsumerWidget {
     );
   }
 
-  void _showDifficultyDialog(BuildContext context, WidgetRef ref, int boardSize) async {
+  void _showMatchSetupDialog(BuildContext context, WidgetRef ref, int boardSize, bool isSinglePlayer) {
     final size = MediaQuery.of(context).size;
     final isSmall = size.height < 500;
-
-    final selectedDifficulty = await showDialog<AIDifficulty>(
+    
+    showDialog(
       context: context,
       builder: (dialogContext) {
+        AIDifficulty selectedDiff = AIDifficulty.expert;
+        FirstPlayerChoice startingChoice = FirstPlayerChoice.player1;
+
         return Center(
           child: Material(
             color: Colors.transparent,
-            child: Container(
-              width: 420, 
-              constraints: BoxConstraints(maxHeight: size.height * 0.9), 
-              padding: EdgeInsets.all(isSmall ? 16 : 24),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [Colors.blue.shade900, Colors.purple.shade900]),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.white24, width: 2)
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('SELECT DIFFICULTY', style: TextStyle(color: Colors.white, fontSize: isSmall ? 16 : 18, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                    SizedBox(height: isSmall ? 16 : 24),
-                    
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      alignment: WrapAlignment.center,
-                      children: AIDifficulty.values.map((level) => InkWell(
-                        onTap: () {
-                          Navigator.pop(dialogContext, level); 
-                        },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Container(
-                          width: 165, 
-                          padding: EdgeInsets.symmetric(vertical: isSmall ? 12 : 14),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white30, width: 1)
+            child: StatefulBuilder(
+              builder: (builderContext, setState) {
+                return Container(
+                  width: 480,
+                  constraints: BoxConstraints(maxHeight: size.height * 0.95),
+                  padding: EdgeInsets.all(isSmall ? 16 : 24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: [Colors.blue.shade900, Colors.purple.shade900]),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white24, width: 2)
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('MATCH SETUP', style: TextStyle(color: Colors.white, fontSize: isSmall ? 18 : 22, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                        SizedBox(height: isSmall ? 16 : 24),
+                        
+                        if (isSinglePlayer) ...[
+                          Text('SELECT DIFFICULTY', style: TextStyle(color: Colors.white70, fontSize: isSmall ? 12 : 14, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8, runSpacing: 8, alignment: WrapAlignment.center,
+                            children: AIDifficulty.values.map((level) => InkWell(
+                              onTap: () => setState(() => selectedDiff = level),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 140,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: selectedDiff == level ? Colors.amber.withOpacity(0.3) : Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: selectedDiff == level ? Colors.amber : Colors.white30, width: selectedDiff == level ? 2 : 1)
+                                ),
+                                child: Center(child: Text(level.name.toUpperCase(), style: TextStyle(color: Colors.white, fontSize: isSmall ? 12 : 14, fontWeight: FontWeight.bold))),
+                              ),
+                            )).toList(),
                           ),
-                          child: Center(
-                            child: Text(level.name.toUpperCase(), style: TextStyle(color: Colors.white, fontSize: isSmall ? 13 : 15, fontWeight: FontWeight.bold))
-                          ),
+                          SizedBox(height: isSmall ? 16 : 24),
+                        ],
+
+                        Text('WHO PLAYS FIRST?', style: TextStyle(color: Colors.white70, fontSize: isSmall ? 12 : 14, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8, runSpacing: 8, alignment: WrapAlignment.center,
+                          children: FirstPlayerChoice.values.map((choice) {
+                            String label = choice == FirstPlayerChoice.player1 ? 'PLAYER 1' : 
+                                           choice == FirstPlayerChoice.player2 ? (isSinglePlayer ? 'COMPUTER' : 'PLAYER 2') : 'RANDOM';
+                            return InkWell(
+                              onTap: () => setState(() => startingChoice = choice),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 120,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: startingChoice == choice ? Colors.green.withOpacity(0.3) : Colors.white.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: startingChoice == choice ? Colors.greenAccent : Colors.white30, width: startingChoice == choice ? 2 : 1)
+                                ),
+                                child: Center(child: Text(label, style: TextStyle(color: Colors.white, fontSize: isSmall ? 12 : 14, fontWeight: FontWeight.bold))),
+                              ),
+                            );
+                          }).toList(),
                         ),
-                      )).toList(),
+
+                        SizedBox(height: isSmall ? 20 : 30),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: Text('CANCEL', style: TextStyle(color: Colors.white70, fontSize: isSmall ? 14 : 16)),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.amber.shade600,
+                                foregroundColor: Colors.black,
+                                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+                              ),
+                              onPressed: () {
+                                Player startPlayer = startingChoice == FirstPlayerChoice.player1 ? Player.player1 :
+                                                     startingChoice == FirstPlayerChoice.player2 ? Player.player2 :
+                                                     (math.Random().nextBool() ? Player.player1 : Player.player2);
+                                                     
+                                ref.read(gameModeProvider.notifier).state = isSinglePlayer ? GameMode.singlePlayer : GameMode.twoPlayer;
+                                ref.read(gameProvider.notifier).setGameMode(isSinglePlayer);
+                                ref.read(gameProvider.notifier).resetGame(
+                                  newSize: boardSize, 
+                                  difficulty: selectedDiff,
+                                  startingPlayer: startPlayer,
+                                );
+                                Navigator.pop(dialogContext);
+                                Navigator.pushNamed(context, '/game');
+                              },
+                              child: Text('START GAME', style: TextStyle(fontSize: isSmall ? 14 : 16, fontWeight: FontWeight.bold)),
+                            )
+                          ]
+                        )
+                      ],
                     ),
-                    
-                    SizedBox(height: isSmall ? 12 : 20),
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext, null),
-                      child: Text('CANCEL', style: TextStyle(color: Colors.white70, fontSize: isSmall ? 12 : 14)),
-                    )
-                  ],
-                ),
-              ),
+                  ),
+                );
+              }
             ),
           ),
         );
       }
     );
-
-    if (selectedDifficulty != null && context.mounted) {
-      ref.read(aiDifficultyProvider.notifier).state = selectedDifficulty;
-      ref.read(gameModeProvider.notifier).state = GameMode.singlePlayer;
-      ref.read(gameProvider.notifier).setGameMode(true);
-      ref.read(gameProvider.notifier).resetGame(newSize: boardSize, difficulty: selectedDifficulty);
-      Navigator.pushNamed(context, '/game'); 
-    }
   }
 }
 
-// THE FIX: Single, unified _SubMenuCard function used across both Online and Offline modes
 Widget _SubMenuCard(String title, IconData icon, bool isSmall) {
   return Container(
     width: 280,
@@ -492,9 +551,11 @@ Widget _SubMenuCard(String title, IconData icon, bool isSmall) {
 
 class OnlineModeScreen extends ConsumerWidget {
   const OnlineModeScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isSmall = MediaQuery.of(context).size.height < 500;
+    
     return Scaffold(
       appBar: AppBar(title: const Text('Online Mode'), backgroundColor: Colors.transparent, elevation: 0),
       extendBodyBehindAppBar: true,
@@ -517,6 +578,7 @@ class OnlineModeScreen extends ConsumerWidget {
 
 class HowToPlayScreen extends StatelessWidget {
   const HowToPlayScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -795,6 +857,7 @@ class _PlayerInfo extends StatelessWidget {
 
 class _BoardLayout extends ConsumerStatefulWidget {
   final GameState boardState;
+
   const _BoardLayout({required this.boardState});
 
   @override
@@ -857,6 +920,7 @@ class GameScreen extends ConsumerWidget {
       canPop: false, 
       onPopInvoked: (didPop) {
         if (didPop) return;
+
         if (state.winner != null) {
           notifier.resetGame();
           Navigator.pushNamedAndRemoveUntil(context, '/mode', (route) => route.isFirst);

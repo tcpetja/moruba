@@ -4,6 +4,7 @@ import 'package:flame/effects.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/animation.dart';
 import 'package:flutter/material.dart';
+
 import '../domain/player.dart';
 import '../domain/pit.dart';
 import '../state/game_state.dart';
@@ -18,7 +19,7 @@ class MorubaBoardGame extends FlameGame {
   final Map<int, Vector2> _pitCenters = {};
   int? _lastActivePit;
   double _time = 0;
-
+  
   late PitComponent p1Bank;
   late PitComponent p2Bank;
   bool _hasStarted = false;
@@ -41,11 +42,9 @@ class MorubaBoardGame extends FlameGame {
     int n = state.board.pitsPerRow;
     final isSmall = size.y < 500;
     
-    // Maximizes board space
     final storeWidth = isSmall ? size.x * 0.12 : size.x * 0.14;
-    final boardWidth = size.x - (storeWidth * 2) - 20; 
+    final boardWidth = size.x - (storeWidth * 2) - 20;      
     
-    // Dynamic Size Math: Ensures pits scale perfectly whether there are 6 or 12
     final pitSize = min((boardWidth / n) * 0.85, (size.y * 0.8) / 4 * 0.85);
     final spacing = boardWidth / n;
 
@@ -54,7 +53,6 @@ class MorubaBoardGame extends FlameGame {
     final p1FrontY = size.y * 0.60;
     final p1BackY = size.y * 0.80;
 
-    // THE COOL LOOK: A sleek frosted wood/glass mat beneath the pits
     final boardSurface = RectangleComponent(
       size: Vector2(boardWidth + 30, size.y * 0.78),
       position: Vector2(storeWidth - 15, size.y * 0.11),
@@ -68,7 +66,6 @@ class MorubaBoardGame extends FlameGame {
     _addBank(n * 4, Player.player1, Vector2(size.x - storeWidth - 10, size.y * 0.15), Vector2(storeWidth, size.y * 0.7));
 
     for (int col = 0; col < n; col++) {
-      // Centers the pits beautifully in their dynamic columns
       double startX = storeWidth + 10 + (col * spacing) + (spacing / 2) - (pitSize / 2);
       
       _addStandardPit((n * 2) + col, Player.player2, startX, p2BackY, pitSize);
@@ -135,8 +132,8 @@ class MorubaBoardGame extends FlameGame {
   @override
   void update(double dt) {
     super.update(dt);
-    _time += dt; 
-    
+    _time += dt;
+      
     if (!_hasStarted && state.movingStones.isNotEmpty) {
       _hasStarted = true;
       p1Bank.collapseBank();
@@ -155,27 +152,37 @@ class MorubaBoardGame extends FlameGame {
       _lastP2Score = currentP2Score;
     }
 
+    // Handles the special jump stone animation intercept
+    if (state.jumpMove != null && state.jumpMove!.isNotEmpty) {
+      int fromPit = state.jumpMove!.keys.first;
+      int toPit = state.jumpMove!.values.first;
+      _spawnFlyingStone(_getDynamicCenter(fromPit), _getDynamicCenter(toPit));
+    } else {
+      if (state.activePit != _lastActivePit) {
+        _lastActivePit = state.activePit;
+        if (state.activePit != null && state.movingStones.isNotEmpty) {
+          int fromPit = state.activePit!;
+          int toPit = MorubaEngine.getNextPit(fromPit, state.currentPlayer, state.board.pitsPerRow);
+          _spawnFlyingStone(_getDynamicCenter(fromPit), _getDynamicCenter(toPit));
+        }
+      }
+    }
+
     for (var component in children) {
       if (component is PitComponent) {
         Pit modelPit = state.board.getPit(component.pitIndex);
         component.syncStones(modelPit.stones);
         
         component.isCaptureMode = state.canCapture;
+        component.isSelectedJump = (state.selectedPitForJump == component.pitIndex);
+        
         component.isValidMove = MorubaEngine.isValidMove(
           state.board, 
           component.pitIndex, 
-          state.currentPlayer
-        ) && modelPit.owner == state.currentPlayer;
-      }
-    }
-
-    if (state.activePit != _lastActivePit) {
-      _lastActivePit = state.activePit;
-
-      if (state.activePit != null && state.movingStones.isNotEmpty) {
-        int fromPit = state.activePit!;
-        int toPit = MorubaEngine.getNextPit(fromPit, state.currentPlayer, state.board.pitsPerRow);
-        _spawnFlyingStone(_getDynamicCenter(fromPit), _getDynamicCenter(toPit));
+          state.currentPlayer,
+          isFirstMove: state.isFirstMove,
+          selectedPitForJump: state.selectedPitForJump,
+        ) && (modelPit.owner == state.currentPlayer || (state.selectedPitForJump != null && component.pitIndex == state.selectedPitForJump));
       }
     }
 
@@ -205,6 +212,7 @@ class MorubaBoardGame extends FlameGame {
         ScaleEffect.to(Vector2.all(1.0), EffectController(duration: 0.15, curve: Curves.easeInCubic)),
       ]),
     );
+
     add(flyingStone);
   }
 }

@@ -25,28 +25,30 @@ class AIEngine {
     return bestPit; 
   }
 
-  /// NEW: Handles dynamic choice calculation parameters based on level selection
-  static int getBestMove(Board board, Player aiPlayer, AIDifficulty difficulty) {
+  // Returns [fromPit, toPit] if jumping, or just [pitIndex] for normal move
+  static List<int> getBestMove(Board board, Player aiPlayer, AIDifficulty difficulty, bool isFirstMove) {
+    if (board.isSingleStonesPhase(aiPlayer)) {
+      return _getBestSingleStoneMove(board, aiPlayer, difficulty, isFirstMove);
+    }
+
     int n = board.pitsPerRow;
     List<int> validMoves = [];
     int startIdx = aiPlayer == Player.player1 ? 0 : n * 2;
     int endIdx = aiPlayer == Player.player1 ? (n * 2) - 1 : (n * 4) - 1;
 
     for (int i = startIdx; i <= endIdx; i++) {
-      if (MorubaEngine.isValidMove(board, i, aiPlayer)) {
+      if (MorubaEngine.isValidMove(board, i, aiPlayer, isFirstMove: isFirstMove)) {
         validMoves.add(i);
       }
     }
 
-    if (validMoves.isEmpty) return startIdx; 
+    if (validMoves.isEmpty) return [startIdx]; 
 
-    // LEVEL 1: BEGINNER - Picks any completely random legal pile
     if (difficulty == AIDifficulty.beginner) {
-      return validMoves[_random.nextInt(validMoves.length)];
+      return [validMoves[_random.nextInt(validMoves.length)]];
     }
 
-    // Determine simulation depth boundaries
-    int maxDepth = 1; // Intermediate default
+    int maxDepth = 1; 
     if (difficulty == AIDifficulty.expert) maxDepth = 3;
     if (difficulty == AIDifficulty.master) maxDepth = 5;
 
@@ -62,7 +64,59 @@ class AIEngine {
         bestMove = move;
       }
     }
-    return bestMove;
+
+    return [bestMove];
+  }
+
+  static List<int> _getBestSingleStoneMove(Board board, Player aiPlayer, AIDifficulty difficulty, bool isFirstMove) {
+    List<List<int>> validJumps = [];
+    List<int> path = MorubaEngine.getPlayerPath(board.pitsPerRow, aiPlayer);
+    int leadingIdx = MorubaEngine.getLeadingStonePathIndex(board, aiPlayer);
+
+    for (int i = 0; i < path.length; i++) {
+      int fromPit = path[i];
+      if (board.getPit(fromPit).stones == 1 && !isFirstMove) {
+        // Standard forward into empty space
+        int nextPit = MorubaEngine.getNextPit(fromPit, aiPlayer, board.pitsPerRow);
+        if (board.getPit(nextPit).stones == 0) {
+          validJumps.add([fromPit, nextPit]);
+        }
+        
+        // Jumps MUST be ahead of the current stone (i + 1) AND behind the leading stone (leadingIdx)
+        for (int j = i + 1; j < leadingIdx; j++) {
+          int toPit = path[j];
+          if (board.getPit(toPit).stones == 0 && toPit != nextPit) {
+            validJumps.add([fromPit, toPit]);
+          }
+        }
+      }
+    }
+
+    if (validJumps.isEmpty) return [path[0], path[1]]; // emergency fallback
+    if (difficulty == AIDifficulty.beginner) return validJumps[_random.nextInt(validJumps.length)];
+
+    int bestScore = -99999;
+    List<int> bestJump = validJumps[0];
+
+    for (var jump in validJumps) {
+      Board sim = board.copy();
+      sim.getPit(jump[0]).stones = 0;
+      sim.getPit(jump[1]).stones = 1;
+      
+      bool captured = MorubaEngine.checkAndApplyCapture(sim, jump[1], aiPlayer);
+      if (captured) {
+        int capPit = getBestCapture(sim, aiPlayer);
+        sim.getBank(aiPlayer).stones += sim.getPit(capPit).stones;
+        sim.getPit(capPit).stones = 0;
+      }
+      
+      int score = _evaluateBoard(sim, aiPlayer, difficulty);
+      if (score > bestScore) {
+        bestScore = score;
+        bestJump = jump;
+      }
+    }
+    return bestJump;
   }
 
   static int _evaluateBoard(Board board, Player aiPlayer, AIDifficulty difficulty) {
@@ -73,12 +127,10 @@ class AIEngine {
     int myFrontStones = _countRowStones(board, aiPlayer, true);
     int oppFrontStones = _countRowStones(board, opponent, true);
 
-    // LEVEL 2: INTERMEDIATE - Pure simple greed (only counts absolute bank points)
     if (difficulty == AIDifficulty.intermediate) {
       return (myBank - oppBank) * 100;
     }
 
-    // LEVEL 3 & 4: EXPERT / MASTER - Positional evaluation heuristics
     return (myBank - oppBank) * 100 + (myFrontStones - oppFrontStones) * 15;
   }
 
@@ -108,6 +160,7 @@ class AIEngine {
     }
 
     Pit landingPit = board.getPit(currentIndex);
+
     if (landingPit.stones > 1) {
         return _simulateTurn(board, currentIndex, player, depth + 1, maxDepth);
     } else {

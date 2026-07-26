@@ -7,7 +7,6 @@ class GameState {
   final Board board;
   final Player currentPlayer;
   final Player? winner;
-  
   final int? activePit;
   final Map<int, int> movingStones;
   final int stonesInHand; 
@@ -16,9 +15,12 @@ class GameState {
   final bool canBank;
   final bool isSinglePlayer;
   final int boardSize; 
-  
-  // NEW: AI Difficulty Tracker
   final AIDifficulty aiDifficulty;
+  final bool isFirstMove;
+  
+  // NEW: State for 2-tap single stone jump logic
+  final int? selectedPitForJump; 
+  final Map<int, int>? jumpMove;
 
   const GameState({
     required this.board,
@@ -32,7 +34,10 @@ class GameState {
     this.canBank = false,
     this.isSinglePlayer = false,
     this.boardSize = 6,
-    this.aiDifficulty = AIDifficulty.expert, // Defaults to a standard challenge
+    this.aiDifficulty = AIDifficulty.expert, 
+    this.isFirstMove = true, 
+    this.selectedPitForJump,
+    this.jumpMove,
   });
 
   bool get isGameOver => winner != null;
@@ -50,6 +55,11 @@ class GameState {
     bool? isSinglePlayer,
     int? boardSize,
     AIDifficulty? aiDifficulty,
+    bool? isFirstMove,
+    int? selectedPitForJump,
+    bool clearSelectedPit = false,
+    Map<int, int>? jumpMove,
+    bool clearJumpMove = false,
   }) {
     return GameState(
       board: board ?? this.board,
@@ -64,6 +74,9 @@ class GameState {
       isSinglePlayer: isSinglePlayer ?? this.isSinglePlayer,
       boardSize: boardSize ?? this.boardSize,
       aiDifficulty: aiDifficulty ?? this.aiDifficulty,
+      isFirstMove: isFirstMove ?? this.isFirstMove,
+      selectedPitForJump: clearSelectedPit ? null : (selectedPitForJump ?? this.selectedPitForJump),
+      jumpMove: clearJumpMove ? null : (jumpMove ?? this.jumpMove),
     );
   }
 }

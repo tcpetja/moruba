@@ -3,39 +3,75 @@ import '../domain/player.dart';
 import '../domain/pit.dart';
 
 class MorubaEngine {
-  
-  /// THE FIX: Anti-Stalling Rule implemented!
-  static bool isValidMove(Board board, int index, Player player) {
-    final pit = board.getPit(index);
-    
-    // 1. Basic checks: Must be your pit, must have stones, cannot be the bank
-    if (pit.owner != player || pit.stones == 0 || pit.type == PitType.bank) {
-      return false;
+
+  // Generates the strict linear path a player's stones travel along
+  static List<int> getPlayerPath(int n, Player player) {
+    List<int> path = [];
+    if (player == Player.player1) {
+      for (int i = 0; i < n; i++) path.add(i); // Back row: Left to right
+      for (int i = (n * 2) - 1; i >= n; i--) path.add(i); // Front row: Right to left
+    } else {
+      for (int i = (n * 3) - 1; i >= n * 2; i--) path.add(i); // Back row: Right to left
+      for (int i = n * 3; i < n * 4; i++) path.add(i); // Front row: Left to right
     }
+    return path;
+  }
 
-    // 2. If it has more than 1 stone, it's always a legal move
-    if (pit.stones > 1) return true;
+  // Finds the index in the path array of the leading stone
+  static int getLeadingStonePathIndex(Board board, Player player) {
+    List<int> path = getPlayerPath(board.pitsPerRow, player);
+    for (int i = path.length - 1; i >= 0; i--) {
+      if (board.getPit(path[i]).stones > 0) return i;
+    }
+    return 0;
+  }
+  
+  static bool isValidMove(Board board, int index, Player player, {bool isFirstMove = false, int? selectedPitForJump}) {
+    final pit = board.getPit(index);
+    if (pit.owner != player || pit.type == PitType.bank) return false;
 
-    // 3. If it has exactly 1 stone, we must verify you don't have any bigger piles
-    int n = board.pitsPerRow;
-    int startIdx = player == Player.player1 ? 0 : n * 2;
-    int endIdx = player == Player.player1 ? (n * 2) - 1 : (n * 4) - 1;
+    bool isSinglePhase = board.isSingleStonesPhase(player);
 
-    for (int i = startIdx; i <= endIdx; i++) {
-      if (board.getPit(i).stones > 1) {
-        // We found a pit with multiple stones! 
-        // Therefore, playing this 1-stone pit is illegal right now.
-        return false; 
+    if (isSinglePhase) {
+      if (selectedPitForJump == null) {
+         // Stage 1: Selecting a stone to move
+         return pit.stones == 1 && (!isFirstMove);
+      } else {
+         // Stage 2: Selecting the destination
+         if (pit.stones != 0) return false; // Must drop into empty pit
+
+         int nextOfSelected = getNextPit(selectedPitForJump, player, board.pitsPerRow);
+         if (index == nextOfSelected) return true; // Standard 1-step forward into an empty pit is valid
+
+         // Jump Logic: Validate it's before the leading stone AND not behind the current stone
+         List<int> path = getPlayerPath(board.pitsPerRow, player);
+         int leadingIdx = getLeadingStonePathIndex(board, player);
+         int targetIdx = path.indexOf(index);
+         int sourceIdx = path.indexOf(selectedPitForJump);
+         
+         // The target must be strictly ahead of the current stone, and strictly behind the leading stone
+         return targetIdx > sourceIdx && targetIdx < leadingIdx;
       }
     }
 
-    // If we made it here, all your non-empty pits have exactly 1 stone, so it's legal!
+    // Standard mode logic
+    if (pit.stones == 0) return false;
+    if (isFirstMove && pit.stones == 1) return false;
+
+    if (pit.stones == 1) {
+      int n = board.pitsPerRow;
+      int startIdx = player == Player.player1 ? 0 : n * 2;
+      int endIdx = player == Player.player1 ? (n * 2) - 1 : (n * 4) - 1;
+      for (int i = startIdx; i <= endIdx; i++) {
+        if (board.getPit(i).stones > 1) return false;
+      }
+    }
+    
     return true; 
   }
 
   static int getNextPit(int currentIndex, Player player, int pitsPerRow) {
     int n = pitsPerRow;
-
     if (player == Player.player1) {
       if (currentIndex >= 0 && currentIndex < n - 1) return currentIndex + 1;
       if (currentIndex == n - 1) return (n * 2) - 1;
@@ -47,7 +83,6 @@ class MorubaEngine {
       if (currentIndex >= n * 3 && currentIndex < (n * 4) - 1) return currentIndex + 1;
       if (currentIndex == (n * 4) - 1) return (n * 3) - 1;
     }
-    
     return currentIndex; 
   }
 
@@ -59,7 +94,7 @@ class MorubaEngine {
     int p2FrontEnd = (n * 4) - 1;
 
     bool isFrontRow = false;
-    int col = -1; 
+    int col = -1;
 
     if (player == Player.player1 && lastIndex >= p1FrontStart && lastIndex <= p1FrontEnd) {
       isFrontRow = true;
@@ -90,7 +125,6 @@ class MorubaEngine {
       board.getPit(oppBackIndex).stones = 0;
 
       board.getBank(player).stones += capturedStones;
-
       return true; 
     }
     
@@ -100,6 +134,7 @@ class MorubaEngine {
   static Player? checkWinner(Board board) {
     int p1Stones = 0;
     int p2Stones = 0;
+
     int p1End = (board.pitsPerRow * 2) - 1;
     int p2End = (board.pitsPerRow * 4) - 1;
 
@@ -108,6 +143,7 @@ class MorubaEngine {
 
     if (p1Stones == 0) return Player.player2;
     if (p2Stones == 0) return Player.player1;
+
     return null;
   }
 }
