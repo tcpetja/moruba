@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import 'package:flutter/services.dart';
 import 'package:flame/game.dart';
-
 import 'domain/player.dart';
 import 'state/game_state.dart';
 import 'state/game_notifier.dart';
 import 'presentation/moruba_board_game.dart';
+import 'presentation/how_to_play_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -49,7 +49,7 @@ enum GameMode { singlePlayer, twoPlayer, onlineFriend, onlineRandom }
 enum FirstPlayerChoice { player1, player2, random }
 
 final gameModeProvider = StateProvider<GameMode?>((ref) => null);
-final boardSizeProvider = StateProvider<int>((ref) => 6); 
+final boardSizeProvider = StateProvider<int>((ref) => 12); 
 final aiDifficultyProvider = StateProvider<AIDifficulty>((ref) => AIDifficulty.expert);
 
 class MorubaApp extends StatelessWidget {
@@ -181,7 +181,13 @@ class HomeScreen extends StatelessWidget {
                 DelayedAnimation(
                   delayMs: 900,
                   child: AnimatedButton(
-                    onPressed: () => Navigator.pushNamed(context, '/howtoplay'),
+                    // EDITED HERE: Changed from pushNamed to direct MaterialPageRoute
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const HowToPlayScreen()),
+                      );
+                    },
                     child: Container(
                       padding: EdgeInsets.symmetric(horizontal: isSmallScreen ? 15 : 20, vertical: isSmallScreen ? 10 : 12),
                       decoration: BoxDecoration(
@@ -361,7 +367,7 @@ class OfflineModeScreen extends ConsumerWidget {
                 SizedBox(height: isSmall ? 8 : 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [6, 8, 10, 12].map((boardSize) {
+                  children: [12, 18, 24, 32].map((boardSize) {
                     bool isSelected = currentSize == boardSize;
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -571,22 +577,6 @@ class OnlineModeScreen extends ConsumerWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class HowToPlayScreen extends StatelessWidget {
-  const HowToPlayScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('How To Play'), backgroundColor: Colors.transparent, elevation: 0),
-      extendBodyBehindAppBar: true,
-      body: Container(
-        decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.amber.shade400, Colors.blue.shade700])),
-        child: const Center(child: Text("Rules go here...", style: TextStyle(color: Colors.white, fontSize: 24))),
       ),
     );
   }
@@ -858,7 +848,7 @@ class _PlayerInfo extends StatelessWidget {
 class _BoardLayout extends ConsumerStatefulWidget {
   final GameState boardState;
 
-  const _BoardLayout({required this.boardState});
+  const _BoardLayout({super.key, required this.boardState});
 
   @override
   ConsumerState<_BoardLayout> createState() => _BoardLayoutState();
@@ -957,7 +947,7 @@ class GameScreen extends ConsumerWidget {
                     ),
                     SizedBox(
                       height: boardHeight,
-                      child: _BoardLayout(boardState: state),
+                      child: _BoardLayout(key: ValueKey(state.matchId), boardState: state),
                     ),
                     SizedBox(
                       height: playerInfoHeight,
@@ -1013,16 +1003,13 @@ class GameScreen extends ConsumerWidget {
                 onResume: () => notifier.togglePause(),
                 onRestart: () {
                   notifier.resetGame();
-                  notifier.togglePause();
                 },
                 onModeChange: () {
                   notifier.resetGame();
-                  notifier.togglePause();
                   Navigator.pushNamedAndRemoveUntil(context, '/mode', (route) => route.isFirst);
                 },
                 onHome: () {
                   notifier.resetGame();
-                  notifier.togglePause();
                   Navigator.popUntil(context, (route) => route.isFirst);
                 },
               ),

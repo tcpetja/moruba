@@ -22,23 +22,22 @@ class GameNotifier extends StateNotifier<GameState> {
 
     Board currentBoard = state.board.copy();
     Pit tappedPit = currentBoard.getPit(pitIndex);
+    
+    bool isStandoff = MorubaEngine.isMutualStandoff(currentBoard);
 
-    // 1. Single Stones Phase 2-Tap Logic
-    if (currentBoard.isSingleStonesPhase(state.currentPlayer)) {
+    if (isStandoff) {
       if (state.selectedPitForJump == null) {
         if (MorubaEngine.isValidMove(currentBoard, pitIndex, state.currentPlayer, isFirstMove: state.isFirstMove)) {
           state = state.copyWith(selectedPitForJump: pitIndex);
         }
         return;
       } else {
-        // Tapped pit while a stone is selected
         if (pitIndex == state.selectedPitForJump) {
-          state = state.copyWith(clearSelectedPit: true); // Deselect
+          state = state.copyWith(clearSelectedPit: true); 
           return;
         }
         
         if (MorubaEngine.isValidMove(currentBoard, pitIndex, state.currentPlayer, selectedPitForJump: state.selectedPitForJump)) {
-          // Execute Jump/Move
           int fromPit = state.selectedPitForJump!;
           state = state.copyWith(
             clearSelectedPit: true,
@@ -48,15 +47,13 @@ class GameNotifier extends StateNotifier<GameState> {
           _executeJump(fromPit, pitIndex, currentBoard);
           return;
         } else if (tappedPit.stones == 1 && tappedPit.owner == state.currentPlayer) {
-          // Change selection to another stone
           state = state.copyWith(selectedPitForJump: pitIndex);
           return;
         }
-        return; // Invalid target tap ignored
+        return; 
       }
     }
 
-    // 2. Standard Sowing Logic
     if (!MorubaEngine.isValidMove(currentBoard, pitIndex, state.currentPlayer, isFirstMove: state.isFirstMove)) return;
 
     int stonesToMove = tappedPit.stones;
@@ -78,7 +75,6 @@ class GameNotifier extends StateNotifier<GameState> {
     board.getPit(fromPit).stones = 0;
     board.getPit(toPit).stones = 1;
     
-    // UI triggers flying stone animation via jumpMove Map
     await Future.delayed(const Duration(milliseconds: 350));
     
     state = state.copyWith(clearJumpMove: true, board: board);
@@ -208,15 +204,16 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   void _triggerAIMove() async {
-    await Future.delayed(const Duration(milliseconds: 1200));
+    int delay = state.isFirstMove ? 2500 : 1200;
+    await Future.delayed(Duration(milliseconds: delay));
+    
     if (state.isGameOver || state.isPaused || state.currentPlayer != Player.player2) return;
 
     List<int> bestMove = AIEngine.getBestMove(state.board, Player.player2, state.aiDifficulty, state.isFirstMove);
     
-    // Process jump vs standard move
     if (bestMove.length == 2) {
       state = state.copyWith(selectedPitForJump: bestMove[0]);
-      await Future.delayed(const Duration(milliseconds: 600)); // AI 'thinking' delay
+      await Future.delayed(const Duration(milliseconds: 600)); 
       makeMove(bestMove[1]);
     } else {
       makeMove(bestMove[0]);
@@ -235,7 +232,7 @@ class GameNotifier extends StateNotifier<GameState> {
     bool wasSingle = state.isSinglePlayer;
     int size = newSize ?? state.boardSize;
     AIDifficulty diff = difficulty ?? state.aiDifficulty;
-    Player start = startingPlayer ?? Player.player1;
+    Player start = startingPlayer ?? state.initialStartingPlayer;
 
     state = GameState(
       board: Board.initial(pitsPerRow: size), 
@@ -243,7 +240,9 @@ class GameNotifier extends StateNotifier<GameState> {
       boardSize: size,
       aiDifficulty: diff,
       currentPlayer: start,
+      initialStartingPlayer: start, 
       isFirstMove: true,
+      matchId: state.matchId + 1, 
     );
 
     if (wasSingle && start == Player.player2) {

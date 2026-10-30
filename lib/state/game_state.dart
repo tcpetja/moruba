@@ -18,9 +18,11 @@ class GameState {
   final AIDifficulty aiDifficulty;
   final bool isFirstMove;
   
-  // NEW: State for 2-tap single stone jump logic
   final int? selectedPitForJump; 
   final Map<int, int>? jumpMove;
+
+  final int matchId; 
+  final Player initialStartingPlayer;
 
   const GameState({
     required this.board,
@@ -33,11 +35,13 @@ class GameState {
     this.canCapture = false,
     this.canBank = false,
     this.isSinglePlayer = false,
-    this.boardSize = 6,
+    this.boardSize = 12,
     this.aiDifficulty = AIDifficulty.expert, 
     this.isFirstMove = true, 
     this.selectedPitForJump,
     this.jumpMove,
+    this.matchId = 0,
+    this.initialStartingPlayer = Player.player1,
   });
 
   bool get isGameOver => winner != null;
@@ -60,6 +64,8 @@ class GameState {
     bool clearSelectedPit = false,
     Map<int, int>? jumpMove,
     bool clearJumpMove = false,
+    int? matchId,
+    Player? initialStartingPlayer,
   }) {
     return GameState(
       board: board ?? this.board,
@@ -77,6 +83,8 @@ class GameState {
       isFirstMove: isFirstMove ?? this.isFirstMove,
       selectedPitForJump: clearSelectedPit ? null : (selectedPitForJump ?? this.selectedPitForJump),
       jumpMove: clearJumpMove ? null : (jumpMove ?? this.jumpMove),
+      matchId: matchId ?? this.matchId,
+      initialStartingPlayer: initialStartingPlayer ?? this.initialStartingPlayer,
     );
   }
 }

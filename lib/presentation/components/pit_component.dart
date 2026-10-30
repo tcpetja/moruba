@@ -11,11 +11,12 @@ class PitComponent extends PositionComponent with TapCallbacks {
   final int pitIndex;
   final Player player;
   final bool isBank;
+  final int pitsPerRow; 
   final Function(int) onTapped;
 
   bool isValidMove = false;
   bool isCaptureMode = false;
-  bool isSelectedJump = false; // NEW
+  bool isSelectedJump = false; 
 
   int _currentStones = 0;
   
@@ -28,13 +29,14 @@ class PitComponent extends PositionComponent with TapCallbacks {
   Vector2? expandedPos;
   Vector2? collapsedSize;
   Vector2? collapsedPos;
-  bool isExpanded = true;
+  bool isExpanded = true; 
   TimerComponent? _collapseTimer;
 
   PitComponent({
     required this.pitIndex,
     required this.player,
     required this.isBank,
+    required this.pitsPerRow,
     required this.onTapped,
     required Vector2 size,
     required Vector2 position,
@@ -76,6 +78,24 @@ class PitComponent extends PositionComponent with TapCallbacks {
         collapsedPos = Vector2(position.x + (size.x - skinnyWidth), position.y); 
       }
     }
+  }
+
+  void transitionTo(Vector2 newPos, Vector2 newSize) {
+    removeAll(children.whereType<SizeEffect>());
+    removeAll(children.whereType<MoveToEffect>());
+    
+    add(SizeEffect.to(newSize, EffectController(duration: 0.5, curve: Curves.easeInOutCubic)));
+    add(MoveToEffect(newPos, EffectController(duration: 0.5, curve: Curves.easeInOutCubic)));
+
+    add(TimerComponent(
+      period: 0.55, 
+      removeOnFinish: true,
+      onTick: () {
+        int temp = _currentStones;
+        _currentStones = -1; 
+        syncStones(temp);
+      }
+    ));
   }
 
   void toggleBank() {
@@ -125,10 +145,20 @@ class PitComponent extends PositionComponent with TapCallbacks {
   void syncStones(int targetCount) {
     if (_currentStones == targetCount) return;
 
-    if (isBank) {
-      if (targetCount > _currentStones) {
-        for (int i = _currentStones; i < targetCount; i++) {
-          _spawnStone(i, targetCount);
+    // THE FIX: Do not spawn physical stones for standard pits on 32-pit boards
+    bool showPhysicalStones = isBank || pitsPerRow < 32;
+
+    if (showPhysicalStones) {
+      if (isBank) {
+        if (targetCount > _currentStones) {
+          for (int i = _currentStones; i < targetCount; i++) {
+            _spawnStone(i, targetCount);
+          }
+        } else {
+          removeAll(children.whereType<StoneComponent>());
+          for (int i = 0; i < targetCount; i++) {
+            _spawnStone(i, targetCount);
+          }
         }
       } else {
         removeAll(children.whereType<StoneComponent>());
@@ -137,10 +167,8 @@ class PitComponent extends PositionComponent with TapCallbacks {
         }
       }
     } else {
+      // For >= 32 pits, just clear any existing physical stones just in case
       removeAll(children.whereType<StoneComponent>());
-      for (int i = 0; i < targetCount; i++) {
-        _spawnStone(i, targetCount);
-      }
     }
 
     _currentStones = targetCount;
@@ -275,9 +303,15 @@ class PitComponent extends PositionComponent with TapCallbacks {
         ..color = Colors.black.withOpacity(0.55)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0);
         
+      double textOffsetY = 0;
+      // THE FIX: Push text upward for 24 pits, but leave it perfectly centered for 32 pits
+      if (!isBank && pitsPerRow >= 24 && pitsPerRow < 32) {
+        textOffsetY = -(size.y * 0.35); 
+      }
+        
       canvas.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromCenter(center: center, width: 28, height: 28),
+          Rect.fromCenter(center: Offset(center.dx, center.dy + textOffsetY), width: 28, height: 28),
           const Radius.circular(14)
         ),
         badgePaint
@@ -285,7 +319,7 @@ class PitComponent extends PositionComponent with TapCallbacks {
       _textPaint.render(
         canvas,
         '$_currentStones',
-        Vector2(center.dx, center.dy + 1), 
+        Vector2(center.dx, center.dy + textOffsetY + 1), 
         anchor: Anchor.center,
       );
     }

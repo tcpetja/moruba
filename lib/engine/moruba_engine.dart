@@ -4,20 +4,18 @@ import '../domain/pit.dart';
 
 class MorubaEngine {
 
-  // Generates the strict linear path a player's stones travel along
   static List<int> getPlayerPath(int n, Player player) {
     List<int> path = [];
     if (player == Player.player1) {
-      for (int i = 0; i < n; i++) path.add(i); // Back row: Left to right
-      for (int i = (n * 2) - 1; i >= n; i--) path.add(i); // Front row: Right to left
+      for (int i = 0; i < n; i++) path.add(i); 
+      for (int i = (n * 2) - 1; i >= n; i--) path.add(i); 
     } else {
-      for (int i = (n * 3) - 1; i >= n * 2; i--) path.add(i); // Back row: Right to left
-      for (int i = n * 3; i < n * 4; i++) path.add(i); // Front row: Left to right
+      for (int i = (n * 3) - 1; i >= n * 2; i--) path.add(i); 
+      for (int i = n * 3; i < n * 4; i++) path.add(i); 
     }
     return path;
   }
 
-  // Finds the index in the path array of the leading stone
   static int getLeadingStonePathIndex(Board board, Player player) {
     List<int> path = getPlayerPath(board.pitsPerRow, player);
     for (int i = path.length - 1; i >= 0; i--) {
@@ -25,36 +23,58 @@ class MorubaEngine {
     }
     return 0;
   }
+
+  static bool isMutualStandoff(Board board) {
+    if (!board.isSingleStonesPhase(Player.player1) || !board.isSingleStonesPhase(Player.player2)) {
+      return false;
+    }
+
+    int n = board.pitsPerRow;
+    List<int> p1Path = getPlayerPath(n, Player.player1);
+    List<int> p2Path = getPlayerPath(n, Player.player2);
+
+    int p1Lead = p1Path[getLeadingStonePathIndex(board, Player.player1)];
+    int p2Lead = p2Path[getLeadingStonePathIndex(board, Player.player2)];
+
+    int p1Next = getNextPit(p1Lead, Player.player1, n);
+    int p2Next = getNextPit(p2Lead, Player.player2, n);
+
+    bool p1NextInFront = p1Next >= n && p1Next <= (n * 2) - 1;
+    bool p2NextInFront = p2Next >= n * 3 && p2Next <= (n * 4) - 1;
+
+    if (p1NextInFront && p2NextInFront) {
+      int p1Col = p1Next - n;
+      int p2Col = p2Next - (n * 3);
+      return p1Col == p2Col;
+    }
+    
+    return false;
+  }
   
   static bool isValidMove(Board board, int index, Player player, {bool isFirstMove = false, int? selectedPitForJump}) {
     final pit = board.getPit(index);
     if (pit.owner != player || pit.type == PitType.bank) return false;
 
-    bool isSinglePhase = board.isSingleStonesPhase(player);
+    bool isStandoff = isMutualStandoff(board);
 
-    if (isSinglePhase) {
+    if (isStandoff) {
       if (selectedPitForJump == null) {
-         // Stage 1: Selecting a stone to move
          return pit.stones == 1 && (!isFirstMove);
       } else {
-         // Stage 2: Selecting the destination
-         if (pit.stones != 0) return false; // Must drop into empty pit
+         if (pit.stones != 0) return false; 
 
          int nextOfSelected = getNextPit(selectedPitForJump, player, board.pitsPerRow);
-         if (index == nextOfSelected) return true; // Standard 1-step forward into an empty pit is valid
+         if (index == nextOfSelected) return true; 
 
-         // Jump Logic: Validate it's before the leading stone AND not behind the current stone
          List<int> path = getPlayerPath(board.pitsPerRow, player);
          int leadingIdx = getLeadingStonePathIndex(board, player);
          int targetIdx = path.indexOf(index);
          int sourceIdx = path.indexOf(selectedPitForJump);
          
-         // The target must be strictly ahead of the current stone, and strictly behind the leading stone
          return targetIdx > sourceIdx && targetIdx < leadingIdx;
       }
     }
 
-    // Standard mode logic
     if (pit.stones == 0) return false;
     if (isFirstMove && pit.stones == 1) return false;
 
@@ -62,8 +82,16 @@ class MorubaEngine {
       int n = board.pitsPerRow;
       int startIdx = player == Player.player1 ? 0 : n * 2;
       int endIdx = player == Player.player1 ? (n * 2) - 1 : (n * 4) - 1;
+      
+      // 1. Check if they are actually in the single stones phase
       for (int i = startIdx; i <= endIdx; i++) {
-        if (board.getPit(i).stones > 1) return false;
+        if (board.getPit(i).stones > 1) return false; // Found a multiple, cannot move single stones yet
+      }
+
+      // 2. THE NEW FIX: If they are in the single stones phase, the target pit MUST be empty
+      int nextPitIndex = getNextPit(index, player, n);
+      if (board.getPit(nextPitIndex).stones > 0) {
+        return false; 
       }
     }
     

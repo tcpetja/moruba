@@ -22,7 +22,9 @@ class MorubaBoardGame extends FlameGame {
   
   late PitComponent p1Bank;
   late PitComponent p2Bank;
-  bool _hasStarted = false;
+  
+  bool _isBoardReady = false; 
+  
   int _lastP1Score = 0;
   int _lastP2Score = 0;
 
@@ -42,11 +44,11 @@ class MorubaBoardGame extends FlameGame {
     int n = state.board.pitsPerRow;
     final isSmall = size.y < 500;
     
-    final storeWidth = isSmall ? size.x * 0.12 : size.x * 0.14;
-    final boardWidth = size.x - (storeWidth * 2) - 20;      
-    
-    final pitSize = min((boardWidth / n) * 0.85, (size.y * 0.8) / 4 * 0.85);
-    final spacing = boardWidth / n;
+    // INITIAL "CRAMPED" LAYOUT (While banks are open)
+    final initialStoreWidth = isSmall ? size.x * 0.12 : size.x * 0.14;
+    final initialBoardWidth = size.x - (initialStoreWidth * 2) - 20;      
+    final initialPitSize = min((initialBoardWidth / n) * 0.85, (size.y * 0.8) / 4 * 0.85);
+    final initialSpacing = initialBoardWidth / n;
 
     final p2BackY = size.y * 0.20;
     final p2FrontY = size.y * 0.40;
@@ -54,25 +56,61 @@ class MorubaBoardGame extends FlameGame {
     final p1BackY = size.y * 0.80;
 
     final boardSurface = RectangleComponent(
-      size: Vector2(boardWidth + 30, size.y * 0.78),
-      position: Vector2(storeWidth - 15, size.y * 0.11),
+      size: Vector2(initialBoardWidth + 30, size.y * 0.78),
+      position: Vector2(initialStoreWidth - 15, size.y * 0.11),
       paint: Paint()
         ..color = Colors.black.withOpacity(0.2)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 15.0),
     );
     add(boardSurface);
 
-    _addBank(n * 4 + 1, Player.player2, Vector2(10, size.y * 0.15), Vector2(storeWidth, size.y * 0.7));
-    _addBank(n * 4, Player.player1, Vector2(size.x - storeWidth - 10, size.y * 0.15), Vector2(storeWidth, size.y * 0.7));
+    _addBank(n * 4 + 1, Player.player2, Vector2(10, size.y * 0.15), Vector2(initialStoreWidth, size.y * 0.7), n);
+    _addBank(n * 4, Player.player1, Vector2(size.x - initialStoreWidth - 10, size.y * 0.15), Vector2(initialStoreWidth, size.y * 0.7), n);
+
+    List<PitComponent> standardPits = [];
 
     for (int col = 0; col < n; col++) {
-      double startX = storeWidth + 10 + (col * spacing) + (spacing / 2) - (pitSize / 2);
+      double startX = initialStoreWidth + 10 + (col * initialSpacing) + (initialSpacing / 2) - (initialPitSize / 2);
       
-      _addStandardPit((n * 2) + col, Player.player2, startX, p2BackY, pitSize);
-      _addStandardPit((n * 3) + col, Player.player2, startX, p2FrontY, pitSize);
-      _addStandardPit(n + col, Player.player1, startX, p1FrontY, pitSize);
-      _addStandardPit(col, Player.player1, startX, p1BackY, pitSize);
+      standardPits.add(_addStandardPit((n * 2) + col, Player.player2, startX, p2BackY, initialPitSize, n));
+      standardPits.add(_addStandardPit((n * 3) + col, Player.player2, startX, p2FrontY, initialPitSize, n));
+      standardPits.add(_addStandardPit(n + col, Player.player1, startX, p1FrontY, initialPitSize, n));
+      standardPits.add(_addStandardPit(col, Player.player1, startX, p1BackY, initialPitSize, n));
     }
+
+    // THE FIX: Animate standard pits outward when the banks collapse
+    add(TimerComponent(
+      period: 2.0,
+      removeOnFinish: true,
+      onTick: () {
+        p1Bank.collapseBank();
+        p2Bank.collapseBank();
+        
+        // FINAL "SPACIOUS" LAYOUT (After banks collapse to 20px)
+        final finalBoardWidth = size.x - 90.0; // Account for the 20px banks + padding
+        final finalSpacing = finalBoardWidth / n;
+        final finalPitSize = min((finalBoardWidth / n) * 0.85, (size.y * 0.8) / 4 * 0.85);
+
+        // Stretch the background mat
+        boardSurface.add(SizeEffect.to(Vector2(size.x - 60.0, size.y * 0.78), EffectController(duration: 0.5, curve: Curves.easeInOutCubic)));
+        boardSurface.add(MoveToEffect(Vector2(30.0, size.y * 0.11), EffectController(duration: 0.5, curve: Curves.easeInOutCubic)));
+
+        // Stretch and reposition all standard pits
+        for (var pit in standardPits) {
+          int col = pit.pitIndex % n;
+          double finalX = 45.0 + (col * finalSpacing) + (finalSpacing / 2) - (finalPitSize / 2);
+          Vector2 finalPos = Vector2(finalX, pit.position.y);
+          Vector2 finalSize = Vector2(finalPitSize, finalPitSize);
+
+          pit.transitionTo(finalPos, finalSize); // Trigger smooth animation
+          
+          // Update internal tracking so flying stones know where the new pits are
+          _pitCenters[pit.pitIndex] = finalPos + (finalSize / 2);
+        }
+
+        _isBoardReady = true; 
+      },
+    ));
 
     handBackground = CircleComponent(
       radius: 22,
@@ -105,19 +143,26 @@ class MorubaBoardGame extends FlameGame {
     add(handBackground);
   }
 
-  void _addBank(int index, Player player, Vector2 pos, Vector2 sizeVec) {
+  void _handlePitTap(int index) {
+    if (!_isBoardReady) return;
+    onPitTapped(index);
+  }
+
+  void _addBank(int index, Player player, Vector2 pos, Vector2 sizeVec, int pitsPerRow) {
     _pitCenters[index] = pos + (sizeVec / 2);
-    final bank = PitComponent(pitIndex: index, player: player, isBank: true, onTapped: onPitTapped, size: sizeVec, position: pos);
+    final bank = PitComponent(pitIndex: index, player: player, isBank: true, pitsPerRow: pitsPerRow, onTapped: _handlePitTap, size: sizeVec, position: pos);
     if (player == Player.player1) p1Bank = bank;
     if (player == Player.player2) p2Bank = bank;
     add(bank);
   }
 
-  void _addStandardPit(int index, Player player, double x, double y, double s) {
+  PitComponent _addStandardPit(int index, Player player, double x, double y, double s, int pitsPerRow) {
     Vector2 pos = Vector2(x, y);
     Vector2 sizeVec = Vector2(s, s);
     _pitCenters[index] = pos + (sizeVec / 2);
-    add(PitComponent(pitIndex: index, player: player, isBank: false, onTapped: onPitTapped, size: sizeVec, position: pos));
+    final pit = PitComponent(pitIndex: index, player: player, isBank: false, pitsPerRow: pitsPerRow, onTapped: _handlePitTap, size: sizeVec, position: pos);
+    add(pit);
+    return pit; // Return so we can store it for the animation
   }
 
   Vector2 _getDynamicCenter(int index) {
@@ -133,26 +178,19 @@ class MorubaBoardGame extends FlameGame {
   void update(double dt) {
     super.update(dt);
     _time += dt;
-      
-    if (!_hasStarted && state.movingStones.isNotEmpty) {
-      _hasStarted = true;
-      p1Bank.collapseBank();
-      p2Bank.collapseBank();
-    }
 
     int currentP1Score = state.board.getBank(Player.player1).stones;
     if (currentP1Score > _lastP1Score) {
-      if (_hasStarted) p1Bank.expandTemporarily();
+      if (_isBoardReady) p1Bank.expandTemporarily();
       _lastP1Score = currentP1Score;
     }
 
     int currentP2Score = state.board.getBank(Player.player2).stones;
     if (currentP2Score > _lastP2Score) {
-      if (_hasStarted) p2Bank.expandTemporarily();
+      if (_isBoardReady) p2Bank.expandTemporarily();
       _lastP2Score = currentP2Score;
     }
 
-    // Handles the special jump stone animation intercept
     if (state.jumpMove != null && state.jumpMove!.isNotEmpty) {
       int fromPit = state.jumpMove!.keys.first;
       int toPit = state.jumpMove!.values.first;

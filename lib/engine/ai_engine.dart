@@ -25,10 +25,18 @@ class AIEngine {
     return bestPit; 
   }
 
-  // Returns [fromPit, toPit] if jumping, or just [pitIndex] for normal move
+  static int _getFocusPercentage(AIDifficulty difficulty) {
+    switch (difficulty) {
+      case AIDifficulty.beginner: return 55;
+      case AIDifficulty.intermediate: return 70;
+      case AIDifficulty.expert: return 85;
+      case AIDifficulty.master: return 100;
+    }
+  }
+
   static List<int> getBestMove(Board board, Player aiPlayer, AIDifficulty difficulty, bool isFirstMove) {
-    if (board.isSingleStonesPhase(aiPlayer)) {
-      return _getBestSingleStoneMove(board, aiPlayer, difficulty, isFirstMove);
+    if (MorubaEngine.isMutualStandoff(board)) {
+      return _getBestStandoffJump(board, aiPlayer, difficulty, isFirstMove);
     }
 
     int n = board.pitsPerRow;
@@ -44,20 +52,20 @@ class AIEngine {
 
     if (validMoves.isEmpty) return [startIdx]; 
 
-    if (difficulty == AIDifficulty.beginner) {
+    int focusChance = _getFocusPercentage(difficulty);
+    bool isFocused = _random.nextInt(100) < focusChance;
+
+    if (!isFocused) {
       return [validMoves[_random.nextInt(validMoves.length)]];
     }
 
-    int maxDepth = 1; 
-    if (difficulty == AIDifficulty.expert) maxDepth = 3;
-    if (difficulty == AIDifficulty.master) maxDepth = 5;
-
+    int maxDepth = difficulty == AIDifficulty.master ? 4 : 2;
     int bestMove = validMoves[0];
-    int bestScore = -99999;
+    int bestScore = -999999;
 
     for (int move in validMoves) {
       Board simulatedBoard = _simulateTurn(board.copy(), move, aiPlayer, 0, maxDepth);
-      int score = _evaluateBoard(simulatedBoard, aiPlayer, difficulty);
+      int score = _evaluateBoard(simulatedBoard, aiPlayer);
       
       if (score > bestScore) {
         bestScore = score;
@@ -68,7 +76,7 @@ class AIEngine {
     return [bestMove];
   }
 
-  static List<int> _getBestSingleStoneMove(Board board, Player aiPlayer, AIDifficulty difficulty, bool isFirstMove) {
+  static List<int> _getBestStandoffJump(Board board, Player aiPlayer, AIDifficulty difficulty, bool isFirstMove) {
     List<List<int>> validJumps = [];
     List<int> path = MorubaEngine.getPlayerPath(board.pitsPerRow, aiPlayer);
     int leadingIdx = MorubaEngine.getLeadingStonePathIndex(board, aiPlayer);
@@ -76,7 +84,6 @@ class AIEngine {
     for (int i = 0; i < path.length; i++) {
       int fromPit = path[i];
       if (board.getPit(fromPit).stones == 1 && !isFirstMove) {
-        // Standard forward into empty space
         int nextPit = MorubaEngine.getNextPit(fromPit, aiPlayer, board.pitsPerRow);
         if (board.getPit(nextPit).stones == 0) {
           validJumps.add([fromPit, nextPit]);
@@ -92,10 +99,16 @@ class AIEngine {
       }
     }
 
-    if (validJumps.isEmpty) return [path[0], path[1]]; // emergency fallback
-    if (difficulty == AIDifficulty.beginner) return validJumps[_random.nextInt(validJumps.length)];
+    if (validJumps.isEmpty) return [path[0], path[1]]; 
 
-    int bestScore = -99999;
+    int focusChance = _getFocusPercentage(difficulty);
+    bool isFocused = _random.nextInt(100) < focusChance;
+
+    if (!isFocused) {
+      return validJumps[_random.nextInt(validJumps.length)];
+    }
+
+    int bestScore = -999999;
     List<int> bestJump = validJumps[0];
 
     for (var jump in validJumps) {
@@ -110,7 +123,7 @@ class AIEngine {
         sim.getPit(capPit).stones = 0;
       }
       
-      int score = _evaluateBoard(sim, aiPlayer, difficulty);
+      int score = _evaluateBoard(sim, aiPlayer);
       if (score > bestScore) {
         bestScore = score;
         bestJump = jump;
@@ -119,31 +132,30 @@ class AIEngine {
     return bestJump;
   }
 
-  static int _evaluateBoard(Board board, Player aiPlayer, AIDifficulty difficulty) {
+  static int _evaluateBoard(Board board, Player aiPlayer) {
     Player opponent = aiPlayer.opponent;
     int myBank = board.getBank(aiPlayer).stones;
     int oppBank = board.getBank(opponent).stones;
     
-    int myFrontStones = _countRowStones(board, aiPlayer, true);
-    int oppFrontStones = _countRowStones(board, opponent, true);
+    int oppMaxCounterAttack = _getOpponentMaxCapture(board, opponent);
 
-    if (difficulty == AIDifficulty.intermediate) {
-      return (myBank - oppBank) * 100;
-    }
-
-    return (myBank - oppBank) * 100 + (myFrontStones - oppFrontStones) * 15;
+    return (myBank * 100) - (oppBank * 100) - (oppMaxCounterAttack * 150);
   }
 
-  static int _countRowStones(Board board, Player player, bool isFront) {
-    int count = 0;
+  static int _getOpponentMaxCapture(Board board, Player opponent) {
+    int maxCap = 0;
     int n = board.pitsPerRow;
-    int start = player == Player.player1 ? (isFront ? n : 0) : (isFront ? n * 3 : n * 2);
-    int end = player == Player.player1 ? (isFront ? (n * 2) - 1 : n - 1) : (isFront ? (n * 4) - 1 : (n * 3) - 1);
-    
-    for (int i = start; i <= end; i++) {
-      count += board.getPit(i).stones;
+    int startIdx = opponent == Player.player1 ? 0 : n * 2;
+    int endIdx = opponent == Player.player1 ? (n * 2) - 1 : (n * 4) - 1;
+
+    for (int i = startIdx; i <= endIdx; i++) {
+      if (MorubaEngine.isValidMove(board, i, opponent)) {
+        Board sim = _simulateTurn(board.copy(), i, opponent, 0, 1);
+        int cap = sim.getBank(opponent).stones - board.getBank(opponent).stones;
+        if (cap > maxCap) maxCap = cap;
+      }
     }
-    return count;
+    return maxCap;
   }
 
   static Board _simulateTurn(Board board, int startIndex, Player player, int depth, int maxDepth) {
